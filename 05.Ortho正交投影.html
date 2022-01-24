@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html lang="en">
+
+  <head>
+    <meta charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Document</title>
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+      }
+    </style>
+  </head>
+
+  <body onload="startWEBGL()">
+    <div>
+      <canvas id="webgl-container" width="800px" height="600px"></canvas>
+    </div>
+
+    <script src="./js/gl-matrix.js" type="text/javascript"></script>
+    <script src="./js/utools.js" type="text/javascript"></script>
+    <!-- <script src="https://cdnjs.cloudflare.com/ajax/libs/gl-matrix/2.8.1/gl-matrix-min.js"></script> -->
+
+    <!--
+      precision lowp float 指定低精度浮点
+      arttribute vec3 v3Position 输入变量
+      attribute vec4 inColor 输入变量
+      varying vec4 outColor 传递变量 在vs 与 fs 函数中传递使用
+      uniform vec4 color 全局变量
+    -->
+    <script id="shader-vs" type="not-script">
+      precision lowp float;
+      attribute vec3 v3Position;
+      uniform float anim;
+      uniform mat4 proj;
+      void main(void)
+      {
+        gl_Position = proj * vec4(v3Position.x + anim, v3Position.y , v3Position.z , 1.0);
+      }
+    </script>
+    <script id="shader-fs" type="not-script">
+          precision lowp float;
+          uniform vec4 color;
+          void main(void)
+          {
+            gl_FragColor = color;
+          }
+    </script>
+
+
+    <script type="text/javascript">
+      var webgl = null; // webgl上下文
+      var vertexShaderObject = null;  // 顶点着色器
+      var fragmentShaderObject = null;  // 面着色器
+      var programObject = null; // 程序对象
+      var tringleBuffer = null; // 顶点缓冲区
+      var indexBuffer = null; // 索引缓冲区
+      var v3PositionIndex = 0;
+      var uniformColor = 0;
+      var uniformAnim = 0;
+      var animTime = 0;
+      var uniformProj = 0;
+      var projectMat = mat4.create()  // 创建正交矩阵
+
+      function Init() {
+        var canvas = document.querySelector('#webgl-container')
+        webgl = canvas.getContext('webgl')
+
+        webgl.viewport(0, 0, canvas.clientWidth, canvas.clientHeight)
+
+        // 使用矩阵 正交投影 自定义顶点坐标轴
+        // (矩阵, 左边, 右边, 底边, 顶边, 最小深度, 最大深度)
+        mat4.ortho(projectMat, 0, canvas.clientWidth, 0, canvas.clientHeight, -100, 100)
+
+        // 创建着色器
+        vertexShaderObject = webgl.createShader(webgl.VERTEX_SHADER)
+        fragmentShaderObject = webgl.createShader(webgl.FRAGMENT_SHADER)
+        // 指定着色器来源
+        webgl.shaderSource(vertexShaderObject, getShaderSource('shader-vs'))
+        webgl.shaderSource(fragmentShaderObject, getShaderSource('shader-fs'))
+        // 编译着色器
+        webgl.compileShader(vertexShaderObject)
+        webgl.compileShader(fragmentShaderObject)
+
+        if (!webgl.getShaderParameter(vertexShaderObject, webgl.COMPILE_STATUS)) {
+          console.error(webgl.getShaderInfoLog(vertexShaderObject));
+          alert('error:vertexShaderObject')
+          return
+        }
+        if (!webgl.getShaderParameter(fragmentShaderObject, webgl.COMPILE_STATUS)) {
+          console.error(webgl.getShaderInfoLog(fragmentShaderObject));
+          alert('error:fragmentShaderObject')
+          return
+        }
+
+        // 创建程序执行着色器
+        programObject = webgl.createProgram()
+        webgl.attachShader(programObject, vertexShaderObject)
+        webgl.attachShader(programObject, fragmentShaderObject)
+
+        webgl.linkProgram(programObject)
+        if (!webgl.getProgramParameter(programObject, webgl.LINK_STATUS)) {
+          alert('error:programObject')
+          return
+        }
+
+        // 绘制正方形
+        const jsArrayData = [
+          // x y z r g b a
+          0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 1.0,
+          0.0, 100, 0.0, 0.0, 1.0, 0.0, 1.0,
+          100, 0.0, 0.0, 0.0, 0.0, 1.0, 1.0,
+          100, 100, 0.0, 1.0, 1.0, 0.0, 1.0,
+        ]
+        // 三角形顶点索引
+        const indexData = [
+          0, 1, 2,
+          1, 2, 3
+        ]
+
+        // 绑定 v3PositionIndex 与方法内 v3Position
+        webgl.bindAttribLocation(programObject, v3PositionIndex, "v3Position")
+        // webgl.bindAttribLocation(programObject, inColor, "inColor")
+        // 另一种绑定方式
+        uniformColor = webgl.getUniformLocation(programObject, 'color')
+        uniformAnim = webgl.getUniformLocation(programObject, 'anim')
+        uniformProj = webgl.getUniformLocation(programObject, 'proj')
+
+        // 创建顶点缓冲区
+        tringleBuffer = webgl.createBuffer()
+        webgl.bindBuffer(webgl.ARRAY_BUFFER, tringleBuffer) // 绑定缓冲区
+        webgl.bufferData(webgl.ARRAY_BUFFER, new Float32Array(jsArrayData), webgl.STATIC_DRAW)
+
+        // 创建索引缓冲区
+        indexBuffer = webgl.createBuffer()
+        webgl.bindBuffer(webgl.ELEMENT_ARRAY_BUFFER, indexBuffer)
+        webgl.bufferData(webgl.ELEMENT_ARRAY_BUFFER, new Uint16Array(indexData), webgl.STATIC_DRAW)
+      }
+      function startWEBGL() {
+        Init()
+        tick()
+      }
+
+      function renderScene() {
+        webgl.clearColor(0.0, 0.0, 0.0, 1.0)
+        webgl.clear(webgl.COLOR_BUFFER_BIT) // 清除缓冲区
+
+        // 指定绘制所使用的缓冲区
+        webgl.bindBuffer(webgl.ARRAY_BUFFER, tringleBuffer)
+        webgl.bindBuffer(webgl.ELEMENT_ARRAY_BUFFER, indexBuffer)
+        animTime += 1
+        webgl.useProgram(programObject)
+        // 设置颜色为red
+        webgl.uniform4f(uniformColor, 1, 0, 0, 1)
+
+        webgl.uniform1f(uniformAnim, animTime)
+
+        // 传递矩阵
+        webgl.uniformMatrix4fv(uniformProj, false, projectMat)
+
+        webgl.enableVertexAttribArray(v3PositionIndex)
+        // 给 v3PositionIndex 赋值 传入三个顶点 （绑定的索引， 读取顶点数， 点坐标类型，，多少字节为一个点/0为自动识别，缓冲区偏移量）
+        webgl.vertexAttribPointer(v3PositionIndex, 3, webgl.FLOAT, false, 4 * 7, 0)
+
+        webgl.drawElements(webgl.TRIANGLES, 6, webgl.UNSIGNED_SHORT, 0)
+      }
+
+      function tick() {
+        requestAnimFrame(tick)
+        renderScene()
+      }
+      window.requestAnimFrame = (function () {
+        return window.requestAnimationFrame
+          || window.webkitRequestAnimationFrame
+          || window.mozRequestAnimationFrame
+          || window.oRequestAnimationFrame
+          || window.msRequestAnimationFrame
+          || function (callback, element) {
+            window.setTimeout(callback, 1000 / 60)
+          }
+      })();
+    </script>
+
+  </body>
+
+</html>

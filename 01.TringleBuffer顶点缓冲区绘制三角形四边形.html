@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="en">
+
+  <head>
+    <meta charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Document</title>
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+      }
+    </style>
+  </head>
+
+  <body onload="Init()">
+    <div>
+      <canvas id="webgl-container" width="800px" height="600px"></canvas>
+    </div>
+
+    <script id="shader-vs" type="not-script">
+      attribute vec3 v3Position;
+      void main(void)
+      {
+        gl_Position = vec4(v3Position, 1.0);
+      }
+    </script>
+
+    <script id="shader-fs" type="not-script">
+      void main(void)
+      {
+        gl_FragColor = vec4(1.0, 1.0, 1.0, 1.0);
+      }
+    </script>
+
+    <script>
+      var webgl = null; // webgl上下文
+      var vertexShaderObject = null;  // 顶点着色器
+      var fragmentShaderObject = null;  // 面着色器
+      var programObject = null; // 程序对象
+      var tringleBuffer = null; // 缓冲区
+      var v3PositionIndex = 0;
+
+      function getShaderSource(scriptId) {
+        var shaderScript = document.getElementById(scriptId)
+        if (shaderScript == null) return null
+        let sourceCode = ''
+        var child = shaderScript.firstChild
+        while (child) {
+          if (child.nodeType == child.TEXT_NODE) sourceCode += child.textContent
+          child = child.nextSibling
+        }
+        return sourceCode
+      }
+
+      function Init() {
+        var canvas = document.querySelector('#webgl-container')
+        webgl = canvas.getContext('webgl')
+
+        webgl.viewport(0, 0, canvas.clientWidth, canvas.clientHeight)
+        // 创建着色器
+        vertexShaderObject = webgl.createShader(webgl.VERTEX_SHADER)
+        fragmentShaderObject = webgl.createShader(webgl.FRAGMENT_SHADER)
+        // 指定着色器来源
+        webgl.shaderSource(vertexShaderObject, getShaderSource('shader-vs'))
+        webgl.shaderSource(fragmentShaderObject, getShaderSource('shader-fs'))
+        // 编译着色器
+        webgl.compileShader(vertexShaderObject)
+        webgl.compileShader(fragmentShaderObject)
+
+        if (!webgl.getShaderParameter(vertexShaderObject, webgl.COMPILE_STATUS)) {
+          alert('error:vertexShaderObject')
+          return
+        }
+        if (!webgl.getShaderParameter(fragmentShaderObject, webgl.COMPILE_STATUS)) {
+          alert('error:fragmentShaderObject')
+          return
+        }
+
+        // 创建程序执行着色器
+        programObject = webgl.createProgram()
+        webgl.attachShader(programObject, vertexShaderObject)
+        webgl.attachShader(programObject, fragmentShaderObject)
+
+        // 绑定 v3PositionIndex 与方法内 v3Position
+        webgl.bindAttribLocation(programObject, v3PositionIndex, "v3Position")
+
+        webgl.linkProgram(programObject)
+        if (!webgl.getProgramParameter(programObject, webgl.LINK_STATUS)) {
+          alert('error:programObject')
+          return
+        }
+
+        webgl.useProgram(programObject)
+
+        // 三角形坐标点
+        const jsArrayData = [
+          0.0, 1.0, 0.0,
+          -1.0, -1.0, 0.0,
+          1.0, -1.0, 0.0
+        ]
+        // 绘制正方形
+        const jsArrayData2 = [
+          -0.5, 0.5, 0.0,
+          0.5, 0.5, 0.0,
+          0.5, -0.5, 0.0,
+          -0.5, 0.5, 0.0,
+          0.5, -0.5, 0.0,
+          -0.5, -0.5, 0.0
+        ]
+
+        // 创建顶点缓冲区
+        tringleBuffer = webgl.createBuffer()
+        webgl.bindBuffer(webgl.ARRAY_BUFFER, tringleBuffer) // 绑定缓冲区
+        // webgl.STATIC_DRAW  一次修改，多次使用
+        // webgl.DYNAMIC_DRAW  多次修改，多次使用（数据需要频繁修改使用）
+        // webgl.STREAM_DRAW  一次修改，一次使用
+        // webgl.bufferData(webgl.ARRAY_BUFFER, new Float32Array(jsArrayData), webgl.STATIC_DRAW) // 向绑定的缓冲区写入数据
+
+        webgl.bufferData(webgl.ARRAY_BUFFER, 4 * 9, webgl.STATIC_DRAW)    // 设置缓冲区大小
+        webgl.bufferSubData(webgl.ARRAY_BUFFER, 0, new Float32Array(jsArrayData))
+
+        var tringleBuffer2 = webgl.createBuffer()
+        webgl.bindBuffer(webgl.ARRAY_BUFFER, tringleBuffer2)
+        webgl.bufferData(webgl.ARRAY_BUFFER, new Float32Array(jsArrayData2), webgl.STATIC_DRAW)
+
+        webgl.clearColor(0.0, 0.0, 0.0, 1.0)
+        webgl.clear(webgl.COLOR_BUFFER_BIT) // 清除缓冲区
+
+        // 指定绘制所使用的缓冲区
+        // webgl.bindBuffer(webgl.ARRAY_BUFFER, tringleBuffer)
+        webgl.bindBuffer(webgl.ARRAY_BUFFER, tringleBuffer2)
+
+        webgl.enableVertexAttribArray(v3PositionIndex)
+        // 给 v3PositionIndex 赋值 传入三个顶点 （绑定的索引， 读取顶点数， 点坐标类型，，多少字节为一个点/0为自动识别，缓冲区偏移量）
+        webgl.vertexAttribPointer(v3PositionIndex, 3, webgl.FLOAT, false, 0, 0)
+
+
+        // webgl.drawArrays(webgl.TRIANGLES, 0, 3)  // 绘制三角形
+        // webgl.drawArrays(webgl.TRIANGLES, 0, 6) // 绘制四边形
+        webgl.drawArrays(webgl.TRIANGLES, 3, 6) // 从缓冲区第四个点开始绘制
+      }
+
+    </script>
+
+  </body>
+
+</html>

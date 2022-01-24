@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="en">
+
+  <head>
+    <meta charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Document</title>
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+      }
+    </style>
+  </head>
+
+  <body onload="Init()">
+    <div>
+      <canvas id="webgl-container" width="800px" height="600px"></canvas>
+    </div>
+    <!--
+      precision lowp float 指定低精度浮点
+      arttribute vec3 v3Position 输入变量
+      attribute vec4 inColor 输入变量
+      varying vec4 outColor 传递变量 在vs 与 fs 函数中传递使用
+      uniform vec4 color 全局变量
+    -->
+    <script id="shader-vs" type="not-script">
+      precision lowp float;
+      attribute vec3 v3Position;
+      void main(void)
+      {
+        gl_Position = vec4(v3Position, 1.0);
+      }
+    </script>
+
+    <script id="shader-fs" type="not-script">
+      precision lowp float;
+      uniform vec4 color;
+      void main(void)
+      {
+        gl_FragColor = color;
+      }
+    </script>
+
+    <script>
+      var webgl = null; // webgl上下文
+      var vertexShaderObject = null;  // 顶点着色器
+      var fragmentShaderObject = null;  // 面着色器
+      var programObject = null; // 程序对象
+      var tringleBuffer = null; // 缓冲区
+      var v3PositionIndex = 0;
+      var indexBuffer = null; // 索引缓冲区
+      var inColor = 1;
+      var uniformColor = 0;
+
+      function getShaderSource(scriptId) {
+        var shaderScript = document.getElementById(scriptId)
+        if (shaderScript == null) return null
+        let sourceCode = ''
+        var child = shaderScript.firstChild
+        while (child) {
+          if (child.nodeType == child.TEXT_NODE) sourceCode += child.textContent
+          child = child.nextSibling
+        }
+        return sourceCode
+      }
+
+      function Init() {
+        var canvas = document.querySelector('#webgl-container')
+        webgl = canvas.getContext('webgl')
+
+        webgl.viewport(0, 0, canvas.clientWidth, canvas.clientHeight)
+        // 创建着色器
+        vertexShaderObject = webgl.createShader(webgl.VERTEX_SHADER)
+        fragmentShaderObject = webgl.createShader(webgl.FRAGMENT_SHADER)
+        // 指定着色器来源
+        webgl.shaderSource(vertexShaderObject, getShaderSource('shader-vs'))
+        webgl.shaderSource(fragmentShaderObject, getShaderSource('shader-fs'))
+        // 编译着色器
+        webgl.compileShader(vertexShaderObject)
+        webgl.compileShader(fragmentShaderObject)
+
+        if (!webgl.getShaderParameter(vertexShaderObject, webgl.COMPILE_STATUS)) {
+          console.error(webgl.getShaderInfoLog(vertexShaderObject));
+          return
+        }
+        if (!webgl.getShaderParameter(fragmentShaderObject, webgl.COMPILE_STATUS)) {
+          console.error(webgl.getShaderInfoLog(fragmentShaderObject));
+          return
+        }
+
+        // 创建程序执行着色器
+        programObject = webgl.createProgram()
+        webgl.attachShader(programObject, vertexShaderObject)
+        webgl.attachShader(programObject, fragmentShaderObject)
+
+        webgl.linkProgram(programObject)
+        if (!webgl.getProgramParameter(programObject, webgl.LINK_STATUS)) {
+          alert('error:programObject')
+          return
+        }
+
+        webgl.useProgram(programObject)
+
+        // 绘制正方形
+        const jsArrayData = [
+          // x y z r g b a
+          -0.5, 0.5, 0.0, 1.0, 0.0, 0.0, 1.0,
+          0.5, 0.5, 0.0, 0.0, 1.0, 0.0, 1.0,
+          0.5, -0.5, 0.0, 0.0, 0.0, 1.0, 1.0,
+          -0.5, -0.5, 0.0, 1.0, 1.0, 0.0, 1.0,
+        ]
+        // 三角形顶点索引
+        const indexData = [
+          0, 1, 2,
+          0, 2, 3
+        ]
+
+        // 绑定 v3PositionIndex 与方法内 v3Position
+        webgl.bindAttribLocation(programObject, v3PositionIndex, "v3Position")
+        // webgl.bindAttribLocation(programObject, inColor, "inColor")
+        // 另一种绑定方式
+        uniformColor = webgl.getUniformLocation(programObject, 'color')
+        // 设置颜色为red
+        webgl.uniform4f(uniformColor, 1, 0, 0, 1)
+
+        // 创建顶点缓冲区
+        tringleBuffer = webgl.createBuffer()
+        webgl.bindBuffer(webgl.ARRAY_BUFFER, tringleBuffer) // 绑定缓冲区
+        webgl.bufferData(webgl.ARRAY_BUFFER, new Float32Array(jsArrayData), webgl.STATIC_DRAW)
+
+        // 创建索引缓冲区
+        indexBuffer = webgl.createBuffer()
+        webgl.bindBuffer(webgl.ELEMENT_ARRAY_BUFFER, indexBuffer)
+        webgl.bufferData(webgl.ELEMENT_ARRAY_BUFFER, new Uint16Array(indexData), webgl.STATIC_DRAW)
+
+
+        webgl.clearColor(0.0, 0.0, 0.0, 1.0)
+        webgl.clear(webgl.COLOR_BUFFER_BIT) // 清除缓冲区
+
+        // 指定绘制所使用的缓冲区
+        // webgl.bindBuffer(webgl.ARRAY_BUFFER, tringleBuffer)
+        webgl.bindBuffer(webgl.ELEMENT_ARRAY_BUFFER, indexBuffer)
+
+        webgl.enableVertexAttribArray(v3PositionIndex)
+        webgl.enableVertexAttribArray(inColor)
+        // 给 v3PositionIndex 赋值 传入三个顶点 （绑定的索引， 读取顶点数， 点坐标类型，，多少字节为一个点/0为自动识别，缓冲区偏移量）
+        webgl.vertexAttribPointer(v3PositionIndex, 3, webgl.FLOAT, false, 4 * 7, 0)
+        // 从 第4个float（偏移 4 * 3 个字节）开始读取 读取4个
+        webgl.vertexAttribPointer(inColor, 4, webgl.FLOAT, false, 4 * 7, 4 * 3)
+
+        // webgl.drawArrays(webgl.TRIANGLES, 0, 6) // 绘制四边形
+        webgl.drawElements(webgl.TRIANGLES, 6, webgl.UNSIGNED_SHORT, 0)
+
+      }
+
+    </script>
+
+  </body>
+
+</html>
