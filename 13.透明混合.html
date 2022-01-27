@@ -1,0 +1,251 @@
+<!DOCTYPE html>
+<html lang="en">
+
+  <head>
+    <meta charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Document</title>
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+      }
+    </style>
+  </head>
+
+  <body onload="startWEBGL()">
+    <div class="container">
+    </div>
+    <script src="./js/gl-matrix.js" type="text/javascript"></script>
+    <script src="./js/utools.js" type="text/javascript"></script>
+    <script type="text/javascript">
+      const vertexShaderSource = `
+        attribute vec3 position;  // 顶点位置
+        attribute vec4 color;     // 输入颜色
+        attribute vec2 textureCoord;
+        uniform mat4 mvpMatrix;
+        uniform float vertexAlpha; // 透明通道
+        varying vec4 vColor;
+        varying vec2 vTextureCoord;      // 共享输入的颜色
+
+        void main(void)
+        {
+          gl_Position = mvpMatrix * vec4(position, 1.0);
+          vColor = vec4(color.rgb, color.a * vertexAlpha);
+          vTextureCoord = textureCoord;
+        }
+      `
+      const fragmentShaderSource = `
+          precision mediump float;  // 中进度浮点
+          uniform sampler2D texture;  // 纹理
+          uniform int useTexture;    // 是否使用纹理
+          varying vec4 vColor;
+          varying vec2 vTextureCoord;
+          void main(void)
+          {
+            vec4 destColor = vec4(0.0);
+            if(bool(useTexture))
+            {
+              vec4 smpColor = texture2D(texture, vTextureCoord);
+              //destColor = vColor * smpColor;
+              destColor =  smpColor;
+            }
+            else
+            {
+              destColor = vColor;
+            }
+            gl_FragColor = destColor;
+          }
+      `
+
+      var container = document.querySelector(".container");
+      var canvas = document.createElement('canvas');
+      canvas.width = 800
+      canvas.height = 800
+
+      var gl = canvas.getContext('webgl')
+      var vertexShaderObject = null;  // 顶点着色器
+      var fragmentShaderObject = null;  // 面着色器
+      var programObject = null; // 程序对象
+      var attLocation = new Array()
+      var uniLocation = new Array()
+      var count = 0
+
+      var textureHandle = null
+
+      function init() {
+        container.appendChild(canvas);
+        gl.viewport(0, 0, canvas.clientWidth, canvas.clientHeight)
+
+        vertexShaderObject = createShader(gl, gl.VERTEX_SHADER, vertexShaderSource)
+        fragmentShaderObject = createShader(gl, gl.FRAGMENT_SHADER, fragmentShaderSource)
+
+        programObject = createProgram(gl, vertexShaderObject, fragmentShaderObject)
+
+        gl.useProgram(programObject)
+
+        attLocation[0] = gl.getAttribLocation(programObject, 'position')
+        attLocation[1] = gl.getAttribLocation(programObject, 'color')
+        attLocation[2] = gl.getAttribLocation(programObject, 'textureCoord')
+
+        uniLocation[0] = gl.getUniformLocation(programObject, 'mvpMatrix')
+        uniLocation[1] = gl.getUniformLocation(programObject, 'vertexAlpha')
+        uniLocation[2] = gl.getUniformLocation(programObject, 'texture')
+        uniLocation[3] = gl.getUniformLocation(programObject, 'useTexture')
+
+        gl.enable(gl.DEPTH_TEST)
+        gl.depthFunc(gl.LEQUAL)
+
+        // 位置信息
+        var position = [
+          -1.0, 1.0, 0.0,
+          1.0, 1.0, 0.0,
+          -1.0, -1.0, 0.0,
+          1.0, -1.0, 0.0
+        ]
+        // 颜色信息
+        var color = [
+          1.0, 0.0, 0.0, 1.0,
+          0.0, 1.0, 0.0, 1.0,
+          0.0, 0.0, 1.0, 1.0,
+          1.0, 1.0, 1.0, 1.0
+        ]
+        // 纹理顶点
+        var textureCoord = [
+          0.0, 0.0,
+          1.0, 0.0,
+          0.0, 1.0,
+          1.0, 1.0
+        ]
+        var index = [
+          0, 1, 2,
+          3, 2, 1
+        ]
+
+        textureHandle = initTexture('./img/texture06_512x512.png')
+
+        var vPosition = createVertexBuffer(gl, position)
+        var vColor = createVertexBuffer(gl, color)
+        var vTextureCoord = createVertexBuffer(gl, textureCoord)
+
+        gl.bindBuffer(gl.ARRAY_BUFFER, vPosition)
+        gl.enableVertexAttribArray(attLocation[0])
+        gl.vertexAttribPointer(attLocation[0], 3, gl.FLOAT, false, 0, 0)
+
+        gl.bindBuffer(gl.ARRAY_BUFFER, vColor)
+        gl.enableVertexAttribArray(attLocation[1])
+        gl.vertexAttribPointer(attLocation[1], 4, gl.FLOAT, false, 0, 0)
+
+        gl.bindBuffer(gl.ARRAY_BUFFER, vTextureCoord)
+        gl.enableVertexAttribArray(attLocation[2])
+        gl.vertexAttribPointer(attLocation[2], 2, gl.FLOAT, false, 0, 0)
+
+        var iIndex = createIndexBuffer(gl, index)
+
+        gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, iIndex);
+
+      }
+
+      function handleLoadedTexture(texture) {
+        gl.bindTexture(gl.TEXTURE_2D, texture)   // 绑定纹理
+        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, texture.image)
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR)  // 放大   NEAREST 效果一般 效率高
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR)  // 缩小  LINEAR效果好 效率低
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE)
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE)
+
+        gl.bindTexture(gl.TEXTURE_2D, null)
+      }
+
+      function initTexture(imageFile) {
+        // 创建纹理
+        var texture = gl.createTexture()
+        texture.image = new Image()
+        texture.image.src = imageFile
+        texture.image.onload = function () {
+          handleLoadedTexture(texture)
+        }
+        return texture
+      }
+
+      function startWEBGL() {
+        init()
+        gl.blendFunc(gl.SRC_ALPHA, gl.ONE)  // 设置混合方式
+        gl.enable(gl.BLEND) // 启用混合
+        gl.disable(gl.DEPTH_TEST) // 禁用深度测试
+        tick()
+      }
+
+      function renderScene() {
+        gl.clearColor(0.0, 0.0, 0.0, 1.0)
+        gl.clearDepth(1.0)
+        gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT) // 清除缓冲区
+        gl.enable(gl.DEPTH_TEST)
+
+        var mMatrix = mat4.identity(mat4.create())
+        var vMatrix = mat4.identity(mat4.create())
+        var pMatrix = mat4.identity(mat4.create())
+        var tmpMatrix = mat4.identity(mat4.create())
+        var mvpMatrix = mat4.identity(mat4.create())
+
+        count++
+        var rad = (count % 360) * Math.PI / 180
+
+        mat4.lookAt(vMatrix, [0.0, 0.0, 5.0], [0, 0, 0], [0, 1, 0])
+        mat4.perspective(pMatrix, 45, canvas.clientWidth / canvas.clientHeight, 0.1, 100.0)
+
+        mat4.multiply(tmpMatrix, pMatrix, vMatrix)
+
+        // 绘制第一个正方形
+        mat4.identity(mMatrix)
+        mat4.translate(mMatrix, mMatrix, [0.25, 0.25, -0.25])
+        mat4.rotate(mMatrix, mMatrix, rad, [0, 1, 0])
+        mat4.multiply(mvpMatrix, tmpMatrix, mMatrix)
+
+        gl.activeTexture(gl.TEXTURE0)
+        gl.bindTexture(gl.TEXTURE_2D, textureHandle)
+
+        gl.uniformMatrix4fv(uniLocation[0], false, mvpMatrix)
+        gl.uniform1f(uniLocation[1], 1.0) // 透明通道
+        gl.uniform1i(uniLocation[2], 0)   // 第0张纹理
+        gl.uniform1i(uniLocation[3], true)  // 使用纹理
+        gl.drawElements(gl.TRIANGLES, 6, gl.UNSIGNED_SHORT, 0);
+
+        // 绘制第二个正方形
+        mat4.identity(mMatrix)
+        mat4.translate(mMatrix, mMatrix, [-0.25, -0.25, 0.25])
+        mat4.rotate(mMatrix, mMatrix, rad, [0, 0, 1])
+        mat4.multiply(mvpMatrix, tmpMatrix, mMatrix)
+
+        gl.bindTexture(gl.TEXTURE_2D, null) // 移除纹理
+        gl.enable(gl.BLEND)
+
+        gl.uniformMatrix4fv(uniLocation[0], false, mvpMatrix)
+        gl.uniform1f(uniLocation[1], 0.5)
+        gl.uniform1i(uniLocation[2], 0)
+        gl.uniform1i(uniLocation[3], false)
+        gl.drawElements(gl.TRIANGLES, 6, gl.UNSIGNED_SHORT, 0)
+
+      }
+
+      function tick() {
+        requestAnimFrame(tick)
+        renderScene()
+      }
+      window.requestAnimFrame = (function () {
+        return window.requestAnimationFrame
+          || window.webkitRequestAnimationFrame
+          || window.mozRequestAnimationFrame
+          || window.oRequestAnimationFrame
+          || window.msRequestAnimationFrame
+          || function (callback, element) {
+            window.setTimeout(callback, 1000 / 60)
+          }
+      })();
+
+    </script>
+
+  </body>
+
+</html>
